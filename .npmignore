@@ -1,0 +1,40 @@
+# Source
+src/app
+src/pages
+public
+
+# Tests
+__tests__
+coverage
+*.test.*
+*.spec.*
+
+# Config files
+.eslintrc
+.prettierrc
+tsconfig.json
+tsup.config.ts
+tailwind.config.js
+postcss.config.js
+next.config.js
+
+# Development files
+.git
+.gitignore
+.env*
+.vscode
+.idea
+*.log
+node_modules
+
+# Documentation
+docs
+examples
+*.md
+!README.md
+
+# Build artifacts
+.next
+out
+build
+coverage 

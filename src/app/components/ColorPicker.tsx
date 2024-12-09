@@ -15,22 +15,38 @@ interface ColorPickerProps {
   onChange?: (color: string) => void;
   trigger?: React.ReactNode;
   className?: string;
+  presetColors?: string[];
+  defaultColor?: string;
+  maxRecentColors?: number;
 }
 
 export function ColorPicker({ 
   value = '#ff0000',
   onChange, 
   trigger,
-  className 
+  className,
+  presetColors = [],
+  defaultColor,
+  maxRecentColors = 10
 }: ColorPickerProps) {
-  const [currentColor, setCurrentColor] = useState(value);
+  const [currentColor, setCurrentColor] = useState(defaultColor || value);
   const [open, setOpen] = useState(false);
   const [hue, setHue] = useState(0);
   const [saturation, setSaturation] = useState(100);
   const [brightness, setBrightness] = useState(100);
   const [isDragging, setIsDragging] = useState(false);
+  const [recentColors, setRecentColors] = useState<string[]>([]);
   const colorMapRef = useRef<HTMLDivElement>(null);
   const hueSliderRef = useRef<HTMLDivElement>(null);
+
+  // Initialize color values when value prop changes
+  useEffect(() => {
+    const [h, s, v] = hexToHsv(value);
+    setHue(h);
+    setSaturation(s);
+    setBrightness(v);
+    setCurrentColor(value);
+  }, [value]);
 
   const hexToHsv = (hex: string): [number, number, number] => {
     hex = hex.replace('#', '');
@@ -65,13 +81,6 @@ export function ColorPicker({
       Math.round(v * 100)
     ];
   };
-
-  useEffect(() => {
-    const [h, s, v] = hexToHsv(value);
-    setHue(h);
-    setSaturation(s);
-    setBrightness(v);
-  }, [value]);
 
   const hsvToHsl = (h: number, s: number, v: number): [number, number, number] => {
     s /= 100;
@@ -126,6 +135,11 @@ export function ColorPicker({
     const color = hsvToHex(h, s, v);
     setCurrentColor(color);
     onChange?.(color);
+    
+    // Add to recent colors if it's not already there
+    if (!recentColors.includes(color)) {
+      setRecentColors(prev => [color, ...prev].slice(0, maxRecentColors));
+    }
   };
 
   const handleColorMapInteraction = (event: React.MouseEvent | React.TouchEvent) => {
@@ -216,14 +230,7 @@ export function ColorPicker({
             style={{ backgroundColor: currentColor }}
           >
             <div className="w-full h-full bg-gradient-to-b from-black/0 to-black/20 p-6 flex flex-col justify-between">
-              <div className="flex justify-between items-start">
-                <Button
-                  variant="ghost"
-                  className="text-white hover:bg-white/20"
-                  onClick={() => setOpen(false)}
-                >
-                  Close
-                </Button>
+              <div className="flex justify-end items-start">
                 <Button
                   className="bg-white hover:bg-white/90 text-black"
                   onClick={() => {
@@ -244,6 +251,30 @@ export function ColorPicker({
               </div>
             </div>
           </div>
+
+          {/* Recent Colors */}
+          {(recentColors.length > 0 || presetColors.length > 0) && (
+            <div className="p-6 border-b">
+              <h3 className="text-sm font-medium mb-3">Recently viewed</h3>
+              <div className="flex flex-wrap gap-2">
+                {[...new Set([...recentColors, ...presetColors])].slice(0, maxRecentColors).map((color, index) => (
+                  <button
+                    key={index}
+                    className="w-8 h-8 rounded-md border shadow-sm hover:scale-105 transition-transform"
+                    style={{ backgroundColor: color }}
+                    onClick={() => {
+                      const [h, s, v] = hexToHsv(color);
+                      setHue(h);
+                      setSaturation(s);
+                      setBrightness(v);
+                      setCurrentColor(color);
+                      onChange?.(color);
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Color Map */}
           <div className="flex-1 p-6">

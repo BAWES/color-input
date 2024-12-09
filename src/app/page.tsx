@@ -18,6 +18,7 @@ export default function Home() {
         <ColorPicker
           value={color}
           onChange={setColor}
+          defaultColor="#ffffff"
           trigger={
             <Button variant="outline" className="w-[200px]">
               <div 
