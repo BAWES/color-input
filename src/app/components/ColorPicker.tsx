@@ -30,14 +30,17 @@ export function ColorPicker({
   maxRecentColors = 10
 }: ColorPickerProps) {
   const [currentColor, setCurrentColor] = useState(defaultColor || value);
+  const [draftColor, setDraftColor] = useState(defaultColor || value);
   const [open, setOpen] = useState(false);
   const [hue, setHue] = useState(0);
   const [saturation, setSaturation] = useState(100);
   const [brightness, setBrightness] = useState(100);
   const [isDragging, setIsDragging] = useState(false);
+  const [isSelectingColor, setIsSelectingColor] = useState(false);
   const [recentColors, setRecentColors] = useState<string[]>([]);
   const colorMapRef = useRef<HTMLDivElement>(null);
   const hueSliderRef = useRef<HTMLDivElement>(null);
+  const lastColorRef = useRef<string>(currentColor);
 
   // Initialize color values when value prop changes
   useEffect(() => {
@@ -46,6 +49,8 @@ export function ColorPicker({
     setSaturation(s);
     setBrightness(v);
     setCurrentColor(value);
+    setDraftColor(value);
+    lastColorRef.current = value;
   }, [value]);
 
   const hexToHsv = (hex: string): [number, number, number] => {
@@ -133,17 +138,27 @@ export function ColorPicker({
 
   const handleColorChange = (h: number, s: number, v: number) => {
     const color = hsvToHex(h, s, v);
-    setCurrentColor(color);
-    onChange?.(color);
-    
-    // Add to recent colors if it's not already there
-    if (!recentColors.includes(color)) {
-      setRecentColors(prev => [color, ...prev].slice(0, maxRecentColors));
+    setDraftColor(color);
+    lastColorRef.current = color;
+  };
+
+  const finalizeColorChange = () => {
+    if (isSelectingColor) {
+      setCurrentColor(lastColorRef.current);
+      onChange?.(lastColorRef.current);
+      
+      // Add to recent colors if it's not already there
+      if (!recentColors.includes(lastColorRef.current)) {
+        setRecentColors(prev => [lastColorRef.current, ...prev].slice(0, maxRecentColors));
+      }
     }
+    setIsSelectingColor(false);
   };
 
   const handleColorMapInteraction = (event: React.MouseEvent | React.TouchEvent) => {
     if (!colorMapRef.current) return;
+
+    event.preventDefault();
 
     const rect = colorMapRef.current.getBoundingClientRect();
     const clientX = 'touches' in event ? event.touches[0].clientX : event.clientX;
@@ -170,39 +185,45 @@ export function ColorPicker({
     const newHue = Math.round(x * 360);
     
     setHue(newHue);
-    handleColorChange(newHue, saturation, brightness);
   };
-
-  useEffect(() => {
-    const handleMouseUp = () => setIsDragging(false);
-    window.addEventListener('mouseup', handleMouseUp);
-    window.addEventListener('touchend', handleMouseUp);
-
-    return () => {
-      window.removeEventListener('mouseup', handleMouseUp);
-      window.removeEventListener('touchend', handleMouseUp);
-    };
-  }, []);
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent | TouchEvent) => {
       if (!isDragging) return;
       
-      if (event.target === colorMapRef.current) {
+      event.preventDefault();
+      
+      const target = event.target as HTMLElement;
+      if (colorMapRef.current?.contains(target) || isSelectingColor) {
         handleColorMapInteraction(event as any);
-      } else if (event.target === hueSliderRef.current) {
+      } else if (hueSliderRef.current?.contains(target)) {
         handleHueSliderInteraction(event as any);
       }
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
+    const handleMouseUp = (event: MouseEvent | TouchEvent) => {
+      if (isDragging && isSelectingColor) {
+        // Get the final position before ending the drag
+        handleColorMapInteraction(event as any);
+      }
+      if (isDragging) {
+        setIsDragging(false);
+        finalizeColorChange();
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove, { passive: false });
+    window.addEventListener('mouseup', handleMouseUp);
     window.addEventListener('touchmove', handleMouseMove, { passive: false });
+    window.addEventListener('touchend', handleMouseUp);
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('touchmove', handleMouseMove);
+      window.removeEventListener('touchend', handleMouseUp);
     };
-  }, [isDragging, hue, saturation, brightness]);
+  }, [isDragging, isSelectingColor]);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -227,14 +248,15 @@ export function ColorPicker({
           {/* Color Preview */}
           <div 
             className="w-full h-[40vh] transition-colors duration-200"
-            style={{ backgroundColor: currentColor }}
+            style={{ backgroundColor: isSelectingColor ? draftColor : currentColor }}
           >
             <div className="w-full h-full bg-gradient-to-b from-black/0 to-black/20 p-6 flex flex-col justify-between">
               <div className="flex justify-end items-start">
                 <Button
                   className="bg-white hover:bg-white/90 text-black"
                   onClick={() => {
-                    onChange?.(currentColor);
+                    setCurrentColor(draftColor);
+                    onChange?.(draftColor);
                     setOpen(false);
                   }}
                 >
@@ -243,10 +265,12 @@ export function ColorPicker({
               </div>
               <div>
                 <h2 className="text-3xl font-bold text-white mb-2">
-                  {getColorName(...hsvToHsl(hue, saturation, brightness))}
+                  {isSelectingColor 
+                    ? getColorName(...hsvToHsl(hue, saturation, brightness))
+                    : getColorName(...hsvToHsl(...hexToHsv(currentColor)))}
                 </h2>
                 <div className="font-mono text-white/80">
-                  {currentColor.toUpperCase()}
+                  {(isSelectingColor ? draftColor : currentColor).toUpperCase()}
                 </div>
               </div>
             </div>
@@ -267,6 +291,7 @@ export function ColorPicker({
                       setHue(h);
                       setSaturation(s);
                       setBrightness(v);
+                      setDraftColor(color);
                       setCurrentColor(color);
                       onChange?.(color);
                     }}
@@ -288,12 +313,29 @@ export function ColorPicker({
                 `
               }}
               onMouseDown={(e) => {
+                e.preventDefault();
                 setIsDragging(true);
+                setIsSelectingColor(true);
+                // Ensure we handle the initial click position
                 handleColorMapInteraction(e);
               }}
               onTouchStart={(e) => {
+                e.preventDefault();
                 setIsDragging(true);
+                setIsSelectingColor(true);
+                // Ensure we handle the initial touch position
                 handleColorMapInteraction(e);
+              }}
+              onClick={(e) => {
+                // Handle single click without drag
+                if (!isDragging) {
+                  handleColorMapInteraction(e);
+                  setCurrentColor(draftColor);
+                  onChange?.(draftColor);
+                  if (!recentColors.includes(draftColor)) {
+                    setRecentColors(prev => [draftColor, ...prev].slice(0, maxRecentColors));
+                  }
+                }
               }}
             >
               <div 
@@ -301,7 +343,7 @@ export function ColorPicker({
                 style={{
                   left: `${saturation}%`,
                   top: `${100 - brightness}%`,
-                  backgroundColor: currentColor,
+                  backgroundColor: isSelectingColor ? draftColor : currentColor,
                   boxShadow: '0 0 0 2px rgba(0,0,0,0.2), 0 4px 8px rgba(0,0,0,0.4)'
                 }}
               />
